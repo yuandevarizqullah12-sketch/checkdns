@@ -1,0 +1,16 @@
+{
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app.py"
+    }
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "1",
+    "SECRET_KEY": "dns-checker-vercel-secret-key-2025
