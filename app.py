@@ -1,53 +1,31 @@
-# app.py - Vercel Deployment Version
+# app.py - Vercel Deployment Version (FIXED)
 from flask import Flask, render_template, request, jsonify, send_file
-from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import dns.resolver
-import dns.zone
-import dns.query
-import dns.dnssec
-import dns.rdatatype
 import concurrent.futures
 import sqlite3
 import json
 import csv
 import io
 import pandas as pd
-from datetime import datetime, timedelta
-import threading
+from datetime import datetime
 import time
 import os
-from functools import lru_cache
 import logging
-
-# Disable Redis for Vercel deployment
-redis_available = False
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-production')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dns-checker-2025')
 CORS(app)
-socketio = SocketIO(app, 
-                   cors_allowed_origins="*",
-                   async_mode='threading',
-                   manage_session=False)
 
-# Database setup for Vercel (in-memory or temporary file)
+# Database setup for Vercel (in-memory)
 def init_db():
     """Initialize SQLite database - using in-memory for Vercel"""
     try:
-        # Try to use persistent storage if available
-        if os.environ.get('VERCEL'):
-            # In Vercel, we use in-memory database
-            conn = sqlite3.connect(':memory:')
-        else:
-            # Local development with file-based database
-            os.makedirs('/tmp/database', exist_ok=True)
-            conn = sqlite3.connect('/tmp/database/dns_checker.db')
-        
+        conn = sqlite3.connect(':memory:', check_same_thread=False)
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS dns_results
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,20 +35,11 @@ def init_db():
                       result TEXT,
                       response_time REAL,
                       timestamp DATETIME)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS propagation_checks
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      domain TEXT,
-                      record_type TEXT,
-                      status TEXT,
-                      progress INTEGER,
-                      start_time DATETIME,
-                      last_update DATETIME)''')
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
-        # Fallback to in-memory
         pass
 
 # Initialize database on startup
@@ -78,18 +47,9 @@ init_db()
 
 def get_db_connection():
     """Get database connection - handles Vercel environment"""
-    try:
-        if os.environ.get('VERCEL'):
-            # In Vercel, use in-memory database (data will be lost on cold start)
-            return sqlite3.connect(':memory:', check_same_thread=False)
-        else:
-            # Local development
-            return sqlite3.connect('/tmp/database/dns_checker.db', check_same_thread=False)
-    except:
-        # Ultimate fallback
-        return sqlite3.connect(':memory:', check_same_thread=False)
+    return sqlite3.connect(':memory:', check_same_thread=False)
 
-# DNS Servers Configuration (same as before)
+# DNS Servers Configuration
 DNS_SERVERS = {
     "global": [
         {"name": "Cloudflare", "ipv4": "1.1.1.1", "ipv6": "2606:4700:4700::1111", "region": "Global", "emoji": "🌐"},
@@ -198,7 +158,6 @@ def test_api():
             "/api/dns-lookup",
             "/api/history",
             "/api/bulk-check",
-            "/api/start-propagation",
             "/api/export/<format>"
         ]
     })
@@ -552,16 +511,6 @@ def export_results(format_type):
         logger.error(f"Export error: {e}")
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
 
-# ============ SOCKET.IO ENDPOINTS (Optional - may not work on Vercel) ============
-
-@socketio.on('connect')
-def handle_connect():
-    logger.info('Client connected via Socket.IO')
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    logger.info('Client disconnected')
-
 # ============ ERROR HANDLING ============
 
 @app.errorhandler(404)
@@ -606,8 +555,6 @@ def robots():
 
 # ============ MAIN ENTRY POINT ============
 
-# This is required for Vercel to detect the app
-# Vercel will look for a variable named "app" (Flask instance)
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     
@@ -616,8 +563,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print(f"📡 Running on port: {port}")
     print(f"🌐 Environment: {'Vercel' if os.environ.get('VERCEL') else 'Development'}")
-    print(f"🗄️  Database: {'In-memory' if os.environ.get('VERCEL') else 'File-based'}")
-    print(f"⚡ Redis: Disabled (Vercel limitation)")
+    print(f"🗄️  Database: In-memory")
     print("\n📋 Available Endpoints:")
     print("  GET  /                   - Frontend")
     print("  GET  /api/test           - Test API")
@@ -629,8 +575,4 @@ if __name__ == '__main__':
     print("  POST /api/export/<format>- Export results")
     print("=" * 60)
     
-    # For Vercel, we don't run socketio
-    if os.environ.get('VERCEL'):
-        app.run(host='0.0.0.0', port=port, debug=False)
-    else:
-        socketio.run(app, host='0.0.0.0', port=port, debug=True, allow_unsafe_werkzeug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
